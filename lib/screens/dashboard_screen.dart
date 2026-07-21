@@ -5,6 +5,7 @@ import '../app_scope.dart';
 import '../data/database.dart';
 import '../logic/gamification.dart';
 import '../logic/study_tips.dart';
+import '../theme.dart';
 import '../util.dart';
 import '../widgets/common.dart';
 import '../widgets/goal_ring.dart';
@@ -20,22 +21,33 @@ class DashboardScreen extends StatelessWidget {
     final now = DateTime.now();
     final weekStart = startOfWeek(now);
 
+    final greeting = switch (now.hour) {
+      < 12 => 'Good morning',
+      < 18 => 'Good afternoon',
+      _ => 'Good evening',
+    };
+    final userName = AppScope.of(context).auth.currentUser ?? '';
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        automaticallyImplyLeading: false,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilledButton.icon(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GradientHeader(
+            title: userName.isEmpty ? 'Dashboard' : '$greeting, $userName',
+            subtitle: 'Here\'s your day at a glance',
+            icon: Icons.dashboard,
+            trailing: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.22),
+                foregroundColor: Colors.white,
+              ),
               onPressed: onStartStudying,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start studying'),
             ),
           ),
-        ],
-      ),
-      body: StreamBuilder<List<Course>>(
+          Expanded(
+            child: StreamBuilder<List<Course>>(
         stream: db.watchCourses(),
         builder: (context, courseSnap) {
           final courses = courseSnap.data ?? [];
@@ -277,6 +289,9 @@ class DashboardScreen extends StatelessWidget {
             },
           );
         },
+            ),
+          ),
+        ],
       ),
     );
   }
