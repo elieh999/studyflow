@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
+import '../widgets/command_palette.dart';
 import 'assignments_screen.dart';
 import 'courses_screen.dart';
 import 'dashboard_screen.dart';
@@ -9,6 +11,7 @@ import 'grades_screen.dart';
 import 'insights_screen.dart';
 import 'plan_screen.dart';
 import 'schedule_screen.dart';
+import 'settings_screen.dart';
 import 'timer_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -31,13 +34,30 @@ class _HomeShellState extends State<HomeShell> {
     (icon: Icons.grade_outlined, selected: Icons.grade, label: 'Grades'),
     (icon: Icons.event_note_outlined, selected: Icons.event_note, label: 'Plan'),
     (icon: Icons.insights_outlined, selected: Icons.insights, label: 'Insights'),
+    (icon: Icons.settings_outlined, selected: Icons.settings, label: 'Settings'),
   ];
 
   void _go(int i) => setState(() => _index = i);
 
+  void _openPalette() {
+    final actions = <PaletteAction>[
+      for (var i = 0; i < _destinations.length; i++)
+        PaletteAction(_destinations[i].label, _destinations[i].icon,
+            () => _go(i),
+            hint: 'Go to ${_destinations[i].label}'),
+      PaletteAction('Start studying', Icons.play_arrow, () => _go(3),
+          hint: 'Open the focus timer'),
+      PaletteAction('Toggle dark mode', Icons.dark_mode, () {
+        final s = AppScope.of(context).settings;
+        s.setDark(!s.isDark);
+      }),
+    ];
+    showCommandPalette(context, actions);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = AppScope.of(context).theme;
+    final settings = AppScope.of(context).settings;
 
     final screens = [
       DashboardScreen(onStartStudying: () => _go(3)),
@@ -49,68 +69,91 @@ class _HomeShellState extends State<HomeShell> {
       const GradesScreen(),
       const PlanScreen(),
       const InsightsScreen(),
+      const SettingsScreen(),
     ];
 
-    return Scaffold(
-      body: Row(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: NavigationRail(
-                      selectedIndex: _index,
-                      onDestinationSelected: _go,
-                      labelType: NavigationRailLabelType.all,
-                      leading: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Column(
-                          children: [
-                            Icon(Icons.school,
-                                color: Theme.of(context).colorScheme.primary,
-                                size: 30),
-                            const SizedBox(height: 4),
-                            const Text('StudyFlow',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+            _openPalette,
+        const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+            _openPalette,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Row(
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: IntrinsicHeight(
+                        child: NavigationRail(
+                          selectedIndex: _index,
+                          onDestinationSelected: _go,
+                          labelType: NavigationRailLabelType.all,
+                          leading: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Column(
+                              children: [
+                                Icon(Icons.school,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    size: 30),
+                                const SizedBox(height: 4),
+                                const Text('StudyFlow',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 6),
+                                IconButton(
+                                  tooltip: 'Search (Ctrl+K)',
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.search, size: 20),
+                                  onPressed: _openPalette,
+                                ),
+                              ],
+                            ),
+                          ),
+                          trailing: Expanded(
+                            child: Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: IconButton(
+                                  tooltip: settings.isDark
+                                      ? 'Switch to light mode'
+                                      : 'Switch to dark mode',
+                                  icon: Icon(settings.isDark
+                                      ? Icons.light_mode
+                                      : Icons.dark_mode),
+                                  onPressed: () =>
+                                      settings.setDark(!settings.isDark),
+                                ),
+                              ),
+                            ),
+                          ),
+                          destinations: [
+                            for (final d in _destinations)
+                              NavigationRailDestination(
+                                icon: Icon(d.icon),
+                                selectedIcon: Icon(d.selected),
+                                label: Text(d.label),
+                              ),
                           ],
                         ),
                       ),
-                      trailing: Expanded(
-                        child: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: IconButton(
-                              tooltip: theme.isDark
-                                  ? 'Switch to light mode'
-                                  : 'Switch to dark mode',
-                              icon: Icon(theme.isDark
-                                  ? Icons.light_mode
-                                  : Icons.dark_mode),
-                              onPressed: () => theme.setDark(!theme.isDark),
-                            ),
-                          ),
-                        ),
-                      ),
-                      destinations: [
-                        for (final d in _destinations)
-                          NavigationRailDestination(
-                            icon: Icon(d.icon),
-                            selectedIcon: Icon(d.selected),
-                            label: Text(d.label),
-                          ),
-                      ],
                     ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(child: screens[_index]),
+            ],
           ),
-          const VerticalDivider(width: 1),
-          Expanded(child: screens[_index]),
-        ],
+        ),
       ),
     );
   }
