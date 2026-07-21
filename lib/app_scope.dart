@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/database.dart';
+import 'security/auth.dart';
 import 'theme.dart';
 
 // Holds all user preferences and persists them. Any change notifies listeners
@@ -128,11 +129,13 @@ class AppScope extends InheritedWidget {
     super.key,
     required this.db,
     required this.settings,
+    required this.auth,
     required super.child,
   });
 
   final AppDatabase db;
   final SettingsController settings;
+  final AuthController auth;
 
   static AppScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
