@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../data/database.dart';
 import '../widgets/common.dart';
+import '../widgets/focus_garden.dart';
 
 enum Phase { study, breakTime }
 
@@ -27,6 +28,8 @@ class _TimerScreenState extends State<TimerScreen> {
   int? _courseId;
   DateTime? _blockStart;
   int _completedToday = 0;
+  int _distractions = 0;
+  final _noteCtrl = TextEditingController();
 
   int get _phaseTotal =>
       (_phase == Phase.study ? _studyMinutes : _breakMinutes) * 60;
@@ -34,6 +37,7 @@ class _TimerScreenState extends State<TimerScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -41,7 +45,10 @@ class _TimerScreenState extends State<TimerScreen> {
     if (_running) return;
     setState(() {
       _running = true;
-      _blockStart ??= DateTime.now();
+      if (_blockStart == null) {
+        _blockStart = DateTime.now();
+        if (_phase == Phase.study) _distractions = 0;
+      }
     });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_remaining > 1) {
@@ -77,14 +84,18 @@ class _TimerScreenState extends State<TimerScreen> {
           startTime: Value(_blockStart!),
           duration: Value(_studyMinutes * 60),
           sessionDate: Value(DateTime.now()),
+          distractions: Value(_distractions),
+          note: Value(_noteCtrl.text.trim()),
         ));
         _completedToday++;
       }
+      _noteCtrl.clear();
       setState(() {
         _phase = Phase.breakTime;
         _remaining = _breakMinutes * 60;
         _running = false;
         _blockStart = null;
+        _distractions = 0;
       });
       _snack('Study session saved. Time for a $_breakMinutes-minute break.');
     } else {
@@ -141,6 +152,16 @@ class _TimerScreenState extends State<TimerScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  StreamBuilder<List<StudySession>>(
+                    stream: db.watchSessions(),
+                    builder: (context, s) {
+                      final total = (s.data ?? [])
+                              .fold<int>(0, (t, x) => t + x.duration) ~/
+                          60;
+                      return FocusGarden(totalMinutes: total);
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 6),
@@ -212,6 +233,34 @@ class _TimerScreenState extends State<TimerScreen> {
                         label: const Text('Reset'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: 320,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _noteCtrl,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: 'Session note (optional)',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Tooltip(
+                          message: 'Log a distraction',
+                          child: OutlinedButton.icon(
+                            onPressed: (_running && isStudy)
+                                ? () => setState(() => _distractions++)
+                                : null,
+                            icon: const Icon(Icons.notifications_active_outlined),
+                            label: Text('$_distractions'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Row(

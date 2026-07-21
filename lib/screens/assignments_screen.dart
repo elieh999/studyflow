@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../ai/ollama_service.dart';
 import '../app_scope.dart';
 import '../data/database.dart';
 import '../util.dart';
@@ -22,6 +23,17 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
   StatusFilter _status = StatusFilter.all;
   int? _priorityFilter; // null = all priorities
 
+  final _ai = OllamaService();
+  bool _aiUp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ai.available().then((v) {
+      if (mounted) setState(() => _aiUp = v);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final db = AppScope.of(context).db;
@@ -30,6 +42,21 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
       appBar: AppBar(
         title: const Text('Assignments'),
         automaticallyImplyLeading: false,
+        actions: [
+          if (_aiUp)
+            StreamBuilder<List<Course>>(
+              stream: db.watchCourses(),
+              builder: (context, snap) {
+                final courses = snap.data ?? [];
+                return IconButton(
+                  tooltip: 'Quick add with AI',
+                  icon: const Icon(Icons.auto_awesome),
+                  onPressed:
+                      courses.isEmpty ? null : () => _quickAdd(courses),
+                );
+              },
+            ),
+        ],
       ),
       floatingActionButton: StreamBuilder<List<Course>>(
         stream: db.watchCourses(),
@@ -103,6 +130,106 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
     if (_status == StatusFilter.completed && !a.isCompleted) return false;
     if (_priorityFilter != null && a.priority != _priorityFilter) return false;
     return true;
+  }
+
+  Future<void> _quickAdd(List<Course> courses) async {
+    final controller = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    final db = AppScope.of(context).db;
+    var busy = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Quick add with AI'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                      'Describe it in plain English, e.g. "history essay due next '
+                      'friday, high priority".'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  enabled: !busy,
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                ),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: LinearProgressIndicator(),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: busy ? null : () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (controller.text.trim().isEmpty) return;
+                      setState(() => busy = true);
+                      try {
+                        final parsed = await _ai.parseQuickAdd(
+                            controller.text.trim(), courses);
+                        if (parsed == null) {
+                          setState(() => busy = false);
+                          messenger.showSnackBar(const SnackBar(
+                              content: Text(
+                                  'Couldn\'t understand that — try rephrasing.')));
+                          return;
+                        }
+                        final courseName =
+                            (parsed['course'] ?? '').toString().toLowerCase();
+                        final course = courses.firstWhere(
+                          (c) => c.name.toLowerCase() == courseName,
+                          orElse: () => courses.first,
+                        );
+                        final pr = switch (
+                            (parsed['priority'] ?? '').toString().toLowerCase()) {
+                          'high' => 2,
+                          'low' => 0,
+                          _ => 1,
+                        };
+                        final days =
+                            (parsed['dueInDays'] as num?)?.round() ?? 3;
+                        final due = DateTime.now()
+                            .add(Duration(days: days))
+                            .copyWith(hour: 23, minute: 59, second: 0);
+                        await db.addAssignment(AssignmentsCompanion(
+                          courseId: Value(course.id),
+                          title: Value(
+                              (parsed['title'] ?? controller.text).toString().trim()),
+                          dueDate: Value(due),
+                          priority: Value(pr),
+                        ));
+                        if (context.mounted) Navigator.pop(context);
+                        messenger.showSnackBar(const SnackBar(
+                            content: Text(
+                                'Added — open it to fine-tune the details.')));
+                      } catch (e) {
+                        setState(() => busy = false);
+                        messenger.showSnackBar(
+                            SnackBar(content: Text('AI request failed: $e')));
+                      }
+                    },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildFilters(List<Course> courses) {
@@ -280,6 +407,10 @@ Future<void> showAssignmentDialog(
   final db = AppScope.of(context).db;
   final titleCtrl = TextEditingController(text: existing?.title ?? '');
   final descCtrl = TextEditingController(text: existing?.description ?? '');
+  final estCtrl = TextEditingController(
+      text: (existing != null && existing.estimatedMinutes > 0)
+          ? (existing.estimatedMinutes / 60).toString()
+          : '');
   var courseId = existing?.courseId ?? courses.first.id;
   var priority = existing?.priority ?? 1;
   var due = existing?.dueDate ??
@@ -365,6 +496,16 @@ Future<void> showAssignmentDialog(
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
+                    controller: estCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Estimated hours (optional)',
+                      helperText: 'Used by the study plan generator',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
                     controller: descCtrl,
                     maxLines: 3,
                     decoration: const InputDecoration(
@@ -384,6 +525,8 @@ Future<void> showAssignmentDialog(
           FilledButton(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
+              final estMinutes =
+                  ((double.tryParse(estCtrl.text.trim()) ?? 0) * 60).round();
               if (existing == null) {
                 await db.addAssignment(AssignmentsCompanion(
                   courseId: Value(courseId),
@@ -391,6 +534,7 @@ Future<void> showAssignmentDialog(
                   description: Value(descCtrl.text.trim()),
                   dueDate: Value(due),
                   priority: Value(priority),
+                  estimatedMinutes: Value(estMinutes),
                 ));
               } else {
                 await db.updateAssignment(existing.copyWith(
@@ -399,6 +543,7 @@ Future<void> showAssignmentDialog(
                   description: descCtrl.text.trim(),
                   dueDate: due,
                   priority: priority,
+                  estimatedMinutes: estMinutes,
                 ));
               }
               if (context.mounted) Navigator.pop(context);
