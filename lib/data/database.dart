@@ -22,6 +22,8 @@ class Assignments extends Table {
   DateTimeColumn get dueDate => dateTime()();
   IntColumn get priority => integer().withDefault(const Constant(1))();
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  // Rough time the student expects this to take, in minutes (0 = not set).
+  IntColumn get estimatedMinutes => integer().withDefault(const Constant(0))();
 }
 
 // A completed focus/study session. duration is stored in seconds.
@@ -32,6 +34,9 @@ class StudySessions extends Table {
   DateTimeColumn get startTime => dateTime()();
   IntColumn get duration => integer()();
   DateTimeColumn get sessionDate => dateTime()();
+  // How many times the student flagged a distraction during the session.
+  IntColumn get distractions => integer().withDefault(const Constant(0))();
+  TextColumn get note => text().withDefault(const Constant(''))();
 }
 
 // A recurring weekly class meeting for the schedule view.
@@ -46,8 +51,42 @@ class ScheduleEntries extends Table {
   TextColumn get location => text().withDefault(const Constant(''))();
 }
 
+// A spaced-repetition flashcard. The SM-2 fields drive the review schedule.
+class Flashcards extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get courseId =>
+      integer().references(Courses, #id, onDelete: KeyAction.cascade)();
+  TextColumn get question => text()();
+  TextColumn get answer => text()();
+  RealColumn get easiness => real().withDefault(const Constant(2.5))();
+  IntColumn get intervalDays => integer().withDefault(const Constant(0))();
+  IntColumn get repetitions => integer().withDefault(const Constant(0))();
+  DateTimeColumn get dueDate => dateTime()();
+  DateTimeColumn get lastReviewed => dateTime().nullable()();
+}
+
+// One graded component of a course (e.g. "Midterm", weight 30%).
+class GradeItems extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get courseId =>
+      integer().references(Courses, #id, onDelete: KeyAction.cascade)();
+  TextColumn get name => text()();
+  RealColumn get weight => real()(); // percentage of the final grade
+  RealColumn get score => real().withDefault(const Constant(0))(); // points earned
+  RealColumn get maxScore => real().withDefault(const Constant(100))();
+  // Whether this component has actually been graded yet.
+  BoolColumn get graded => boolean().withDefault(const Constant(false))();
+}
+
 @DriftDatabase(
-  tables: [Courses, Assignments, StudySessions, ScheduleEntries],
+  tables: [
+    Courses,
+    Assignments,
+    StudySessions,
+    ScheduleEntries,
+    Flashcards,
+    GradeItems,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -56,15 +95,24 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
         },
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(assignments, assignments.estimatedMinutes);
+            await m.addColumn(studySessions, studySessions.distractions);
+            await m.addColumn(studySessions, studySessions.note);
+            await m.createTable(flashcards);
+            await m.createTable(gradeItems);
+          }
+        },
         beforeOpen: (details) async {
-          // SQLite needs this on per-connection for cascade deletes to work.
+          // SQLite needs this per-connection for cascade deletes to work.
           await customStatement('PRAGMA foreign_keys = ON');
         },
       );
@@ -90,6 +138,10 @@ class AppDatabase extends _$AppDatabase {
       (select(assignments)..orderBy([(a) => OrderingTerm(expression: a.dueDate)]))
           .watch();
 
+  Future<List<Assignment>> allAssignments() =>
+      (select(assignments)..orderBy([(a) => OrderingTerm(expression: a.dueDate)]))
+          .get();
+
   Future<int> addAssignment(AssignmentsCompanion a) =>
       into(assignments).insert(a);
 
@@ -106,6 +158,8 @@ class AppDatabase extends _$AppDatabase {
   // ---- Study sessions ----
   Stream<List<StudySession>> watchSessions() => select(studySessions).watch();
 
+  Future<List<StudySession>> allSessions() => select(studySessions).get();
+
   Future<int> addSession(StudySessionsCompanion s) =>
       into(studySessions).insert(s);
 
@@ -118,11 +172,79 @@ class AppDatabase extends _$AppDatabase {
             ]))
           .watch();
 
+  Future<List<ScheduleEntry>> allSchedule() => select(scheduleEntries).get();
+
   Future<int> addScheduleEntry(ScheduleEntriesCompanion e) =>
       into(scheduleEntries).insert(e);
 
   Future<int> deleteScheduleEntry(int id) =>
       (delete(scheduleEntries)..where((e) => e.id.equals(id))).go();
+
+  // ---- Flashcards ----
+  Stream<List<Flashcard>> watchFlashcards() => select(flashcards).watch();
+
+  Future<int> addFlashcard(FlashcardsCompanion f) =>
+      into(flashcards).insert(f);
+
+  Future<bool> updateFlashcard(Flashcard f) => update(flashcards).replace(f);
+
+  Future<int> deleteFlashcard(int id) =>
+      (delete(flashcards)..where((f) => f.id.equals(id))).go();
+
+  // ---- Grade items ----
+  Stream<List<GradeItem>> watchGradeItems() => select(gradeItems).watch();
+
+  Future<int> addGradeItem(GradeItemsCompanion g) =>
+      into(gradeItems).insert(g);
+
+  Future<bool> updateGradeItem(GradeItem g) => update(gradeItems).replace(g);
+
+  Future<int> deleteGradeItem(int id) =>
+      (delete(gradeItems)..where((g) => g.id.equals(id))).go();
+
+  // ---- Backup / restore ----
+  // Replaces all data with the contents of a backup produced by the app.
+  Future<void> importBackup(Map<String, dynamic> data) async {
+    List<Map<String, dynamic>> rows(String key) =>
+        ((data[key] as List?) ?? const [])
+            .cast<Map<String, dynamic>>();
+
+    await transaction(() async {
+      // Clear children first, then parents.
+      await delete(gradeItems).go();
+      await delete(flashcards).go();
+      await delete(scheduleEntries).go();
+      await delete(studySessions).go();
+      await delete(assignments).go();
+      await delete(courses).go();
+
+      // Insert parents first so foreign keys resolve.
+      for (final m in rows('courses')) {
+        await into(courses)
+            .insert(Course.fromJson(m), mode: InsertMode.insertOrReplace);
+      }
+      for (final m in rows('assignments')) {
+        await into(assignments).insert(Assignment.fromJson(m),
+            mode: InsertMode.insertOrReplace);
+      }
+      for (final m in rows('sessions')) {
+        await into(studySessions).insert(StudySession.fromJson(m),
+            mode: InsertMode.insertOrReplace);
+      }
+      for (final m in rows('schedule')) {
+        await into(scheduleEntries).insert(ScheduleEntry.fromJson(m),
+            mode: InsertMode.insertOrReplace);
+      }
+      for (final m in rows('flashcards')) {
+        await into(flashcards).insert(Flashcard.fromJson(m),
+            mode: InsertMode.insertOrReplace);
+      }
+      for (final m in rows('grades')) {
+        await into(gradeItems)
+            .insert(GradeItem.fromJson(m), mode: InsertMode.insertOrReplace);
+      }
+    });
+  }
 }
 
 // drift_flutter picks the right backend automatically:
