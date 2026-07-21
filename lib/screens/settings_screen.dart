@@ -1,10 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
-import '../export/exporters.dart';
-import '../export/web_files.dart';
+import '../export/backup_actions.dart';
 import '../theme.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -23,6 +20,39 @@ class SettingsScreen extends StatelessWidget {
         builder: (context, _) => ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            _section(context, 'Account'),
+            _card(context, [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    child: Text(
+                      (AppScope.of(context).auth.currentUser ?? '?')
+                          .substring(0, 1)
+                          .toUpperCase(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(AppScope.of(context).auth.currentUser ?? '',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        Text('Signed in on this device',
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Log out'),
+                    onPressed: () => AppScope.of(context).auth.logout(),
+                  ),
+                ],
+              ),
+            ]),
             _section(context, 'Appearance'),
             _card(context, [
               _rowLabel(context, 'Theme'),
@@ -112,13 +142,15 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   OutlinedButton.icon(
                     icon: const Icon(Icons.download_outlined),
-                    label: const Text('Backup (JSON)'),
-                    onPressed: () => _backup(context),
+                    label: const Text('Backup'),
+                    onPressed: () =>
+                        exportBackupFlow(context, AppScope.of(context).db),
                   ),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.upload_outlined),
                     label: const Text('Restore'),
-                    onPressed: () => _restore(context),
+                    onPressed: () =>
+                        restoreBackupFlow(context, AppScope.of(context).db),
                   ),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
@@ -227,34 +259,6 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _backup(BuildContext context) async {
-    final db = AppScope.of(context).db;
-    final json = buildBackupJson(
-      courses: await db.allCourses(),
-      assignments: await db.allAssignments(),
-      sessions: await db.allSessions(),
-      schedule: await db.allSchedule(),
-      flashcards: await db.watchFlashcards().first,
-      grades: await db.watchGradeItems().first,
-    );
-    downloadText('studyflow_backup.json', json, 'application/json');
-  }
-
-  Future<void> _restore(BuildContext context) async {
-    final db = AppScope.of(context).db;
-    final messenger = ScaffoldMessenger.of(context);
-    final text = await pickTextFile();
-    if (text == null) return;
-    try {
-      await db.importBackup(jsonDecode(text) as Map<String, dynamic>);
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Data restored from backup.')));
-    } catch (e) {
-      messenger.showSnackBar(
-          SnackBar(content: Text('Could not read that backup: $e')));
-    }
   }
 
   Future<void> _reset(BuildContext context) async {

@@ -89,15 +89,17 @@ String buildBackupJson({
   required List<ScheduleEntry> schedule,
   required List<Flashcard> flashcards,
   required List<GradeItem> grades,
+  List<Note> notes = const [],
 }) {
   Map<String, dynamic> data = {
-    'version': 2,
+    'version': 3,
     'courses': courses.map((c) => c.toJson()).toList(),
     'assignments': assignments.map((a) => a.toJson()).toList(),
     'sessions': sessions.map((s) => s.toJson()).toList(),
     'schedule': schedule.map((e) => e.toJson()).toList(),
     'flashcards': flashcards.map((f) => f.toJson()).toList(),
     'grades': grades.map((g) => g.toJson()).toList(),
+    'notes': notes.map((n) => n.toJson()).toList(),
   };
   return const JsonEncoder.withIndent('  ').convert(data);
 }

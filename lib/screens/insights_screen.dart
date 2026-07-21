@@ -1,11 +1,10 @@
-import 'dart:convert';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../app_scope.dart';
 import '../data/database.dart';
+import '../export/backup_actions.dart';
 import '../export/exporters.dart';
 import '../export/web_files.dart';
 import '../logic/insights.dart';
@@ -199,36 +198,13 @@ class InsightsScreen extends StatelessWidget {
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.download_outlined),
-          label: const Text('Backup (JSON)'),
-          onPressed: () async {
-            final json = buildBackupJson(
-              courses: await db.allCourses(),
-              assignments: await db.allAssignments(),
-              sessions: await db.allSessions(),
-              schedule: await db.allSchedule(),
-              flashcards: await db.watchFlashcards().first,
-              grades: await db.watchGradeItems().first,
-            );
-            downloadText('studyflow_backup.json', json, 'application/json');
-          },
+          label: const Text('Backup'),
+          onPressed: () => exportBackupFlow(context, db),
         ),
         OutlinedButton.icon(
           icon: const Icon(Icons.upload_outlined),
           label: const Text('Restore'),
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            final text = await pickTextFile();
-            if (text == null) return;
-            try {
-              final data = jsonDecode(text) as Map<String, dynamic>;
-              await db.importBackup(data);
-              messenger.showSnackBar(
-                  const SnackBar(content: Text('Data restored from backup.')));
-            } catch (e) {
-              messenger.showSnackBar(
-                  SnackBar(content: Text('Could not read that backup: $e')));
-            }
-          },
+          onPressed: () => restoreBackupFlow(context, db),
         ),
       ],
     );
