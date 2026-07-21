@@ -9,6 +9,7 @@ import 'dashboard_screen.dart';
 import 'flashcards_screen.dart';
 import 'grades_screen.dart';
 import 'insights_screen.dart';
+import 'notes_screen.dart';
 import 'plan_screen.dart';
 import 'schedule_screen.dart';
 import 'settings_screen.dart';
@@ -31,6 +32,7 @@ class _HomeShellState extends State<HomeShell> {
     (icon: Icons.timer_outlined, selected: Icons.timer, label: 'Focus timer'),
     (icon: Icons.calendar_view_week_outlined, selected: Icons.calendar_view_week, label: 'Schedule'),
     (icon: Icons.style_outlined, selected: Icons.style, label: 'Flashcards'),
+    (icon: Icons.sticky_note_2_outlined, selected: Icons.sticky_note_2, label: 'Notes'),
     (icon: Icons.grade_outlined, selected: Icons.grade, label: 'Grades'),
     (icon: Icons.event_note_outlined, selected: Icons.event_note, label: 'Plan'),
     (icon: Icons.insights_outlined, selected: Icons.insights, label: 'Insights'),
@@ -66,6 +68,7 @@ class _HomeShellState extends State<HomeShell> {
       const TimerScreen(),
       const ScheduleScreen(),
       const FlashcardsScreen(),
+      const NotesScreen(),
       const GradesScreen(),
       const PlanScreen(),
       const InsightsScreen(),
@@ -150,7 +153,26 @@ class _HomeShellState extends State<HomeShell> {
                 },
               ),
               const VerticalDivider(width: 1),
-              Expanded(child: screens[_index]),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 240),
+                  switchInCurve: Curves.easeOut,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween(
+                              begin: const Offset(0.02, 0),
+                              end: Offset.zero)
+                          .animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(_index),
+                    child: screens[_index],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
