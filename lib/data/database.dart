@@ -65,6 +65,16 @@ class Flashcards extends Table {
   DateTimeColumn get lastReviewed => dateTime().nullable()();
 }
 
+// A free-form study note attached to a course.
+class Notes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get courseId =>
+      integer().references(Courses, #id, onDelete: KeyAction.cascade)();
+  TextColumn get title => text().withDefault(const Constant(''))();
+  TextColumn get body => text().withDefault(const Constant(''))();
+  DateTimeColumn get updatedAt => dateTime()();
+}
+
 // One graded component of a course (e.g. "Midterm", weight 30%).
 class GradeItems extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -86,16 +96,18 @@ class GradeItems extends Table {
     ScheduleEntries,
     Flashcards,
     GradeItems,
+    Notes,
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  // Each signed-in user gets their own database file/store via [dbName].
+  AppDatabase(String dbName) : super(_openConnection(dbName));
 
   // Used by tests to inject an in-memory executor.
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -109,6 +121,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(studySessions, studySessions.note);
             await m.createTable(flashcards);
             await m.createTable(gradeItems);
+          }
+          if (from < 3) {
+            await m.createTable(notes);
           }
         },
         beforeOpen: (details) async {
@@ -202,9 +217,24 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteGradeItem(int id) =>
       (delete(gradeItems)..where((g) => g.id.equals(id))).go();
 
+  // ---- Notes ----
+  Stream<List<Note>> watchNotes() => (select(notes)
+        ..orderBy([
+          (n) => OrderingTerm(expression: n.updatedAt, mode: OrderingMode.desc)
+        ]))
+      .watch();
+
+  Future<int> addNote(NotesCompanion n) => into(notes).insert(n);
+
+  Future<bool> updateNote(Note n) => update(notes).replace(n);
+
+  Future<int> deleteNote(int id) =>
+      (delete(notes)..where((n) => n.id.equals(id))).go();
+
   // Wipes every table (children first so foreign keys are satisfied).
   Future<void> clearAllData() async {
     await transaction(() async {
+      await delete(notes).go();
       await delete(gradeItems).go();
       await delete(flashcards).go();
       await delete(scheduleEntries).go();
@@ -223,6 +253,7 @@ class AppDatabase extends _$AppDatabase {
 
     await transaction(() async {
       // Clear children first, then parents.
+      await delete(notes).go();
       await delete(gradeItems).go();
       await delete(flashcards).go();
       await delete(scheduleEntries).go();
@@ -255,6 +286,10 @@ class AppDatabase extends _$AppDatabase {
         await into(gradeItems)
             .insert(GradeItem.fromJson(m), mode: InsertMode.insertOrReplace);
       }
+      for (final m in rows('notes')) {
+        await into(notes)
+            .insert(Note.fromJson(m), mode: InsertMode.insertOrReplace);
+      }
     });
   }
 }
@@ -262,9 +297,9 @@ class AppDatabase extends _$AppDatabase {
 // drift_flutter picks the right backend automatically:
 //  - desktop/mobile: a native SQLite file under the app documents folder
 //  - web: a WASM SQLite build persisted in the browser (IndexedDB/OPFS)
-QueryExecutor _openConnection() {
+QueryExecutor _openConnection(String name) {
   return driftDatabase(
-    name: 'studyflow',
+    name: name,
     web: DriftWebOptions(
       sqlite3Wasm: Uri.parse('sqlite3.wasm'),
       driftWorker: Uri.parse('drift_worker.js'),
