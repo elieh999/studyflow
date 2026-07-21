@@ -12,8 +12,11 @@ package). It's a single-user, offline app.
 
 ## What it does
 
-- **Dashboard** — today's classes, your soonest upcoming assignments, study time
-  this week, a "due within 48 hours" alert, and a "Start studying" button.
+- **Accounts** — create a local account and sign in; each account keeps its own
+  separate study data on this device (see "Security & your data" below).
+- **Dashboard** — a greeting header, today's classes, your soonest upcoming
+  assignments, study time this week, a "due within 48 hours" alert, and a
+  "Start studying" button.
 - **Courses** — add / edit / delete courses with an instructor and a colour.
   Each course shows its total study time and how many assignments are still open.
 - **Assignments** — add / edit / delete, mark complete, set priority
@@ -28,6 +31,8 @@ package). It's a single-user, offline app.
 - **Flashcards** — make decks per course and review them with spaced repetition
   (an SM-2 scheduler, the same idea Anki uses). If you have a local AI model
   running (see below), you can paste your notes and it'll draft cards for you.
+- **Notes** — keep free-form study notes per course, and turn any note into
+  flashcards in one tap (when the local AI is available).
 - **Study plan** — give assignments an estimated time and it builds a suggested
   day-by-day plan, earliest-deadline-first, capped at how much you want to study
   per day. It warns you when something won't fit before it's due.
@@ -39,7 +44,8 @@ package). It's a single-user, offline app.
   studying you do" figure, and export buttons (see below).
 - **Export & backup** — save a weekly PDF report, export your assignments and
   classes to a calendar (.ics) file for Google/Outlook, and back up or restore
-  all your data as a JSON file.
+  all your data as a JSON file — optionally **encrypted** with a passphrase
+  (AES-256-GCM).
 - **Settings & themes** — light / dark / system mode, ten accent colours that
   recolour the whole app, and a text-size option. You can also set your default
   Pomodoro lengths, when long breaks kick in, your daily study goal, and which
@@ -59,11 +65,32 @@ the app works completely fine without it. I tested with the small
 `qwen2.5:0.5b` model; a larger model gives noticeably better cards. The launcher
 talks to Ollama for the app so the browser doesn't have to.
 
+## Security & your data
+
+I wanted to handle credentials properly, so:
+
+- Passwords are **never stored**. Only a salted **PBKDF2-HMAC-SHA256** hash
+  (150,000 iterations) is kept, and login re-derives and compares it in constant
+  time.
+- Each account's data lives in its **own separate local database**.
+- Backups can be **encrypted with AES-256-GCM** using a key derived from a
+  passphrase you choose — so a backup file is useless without it.
+
+Being honest about what this is and isn't: StudyFlow is a **local, offline,
+single-user app with no server**. The login gates the app's UI, and encrypted
+backups protect files you export or share. But the *live* database sits in this
+device's local storage, so someone with direct access to the computer's files
+could still read it without the password — there's no server enforcing access.
+Real "nobody can bypass it" multi-user security would need a backend holding the
+data and doing auth, which is out of scope for this offline build. Publishing the
+**source code** is safe: no passwords or secrets are stored in the repo.
+
 ## How to open it
 
 Double-click **`Open StudyFlow.exe`**. That's it — the app opens in its own
-window. There's nothing to install and no setup step. Your data is created
-automatically the first time you add something and is still there next time.
+window. There's nothing to install. The first time, you'll create a local
+account (username + password); after that you sign in each time you open it.
+Your data is created automatically and is still there next time.
 
 ## Known limitations
 
