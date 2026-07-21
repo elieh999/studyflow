@@ -67,6 +67,13 @@ class DashboardScreen extends StatelessWidget {
                       final pendingCount =
                           assignments.where((a) => !a.isCompleted).length;
 
+                      final dueSoon = upcoming
+                          .where((a) =>
+                              a.dueDate.isAfter(now) &&
+                              a.dueDate.difference(now) <=
+                                  const Duration(hours: 48))
+                          .toList();
+
                       if (courses.isEmpty) {
                         return const EmptyHint(
                           icon: Icons.school_outlined,
@@ -77,6 +84,33 @@ class DashboardScreen extends StatelessWidget {
                       return ListView(
                         padding: const EdgeInsets.all(20),
                         children: [
+                          if (dueSoon.isNotEmpty)
+                            Card(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .errorContainer
+                                  .withValues(alpha: 0.55),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.alarm, size: 22),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        '${dueSoon.length} assignment${dueSoon.length == 1 ? '' : 's'} '
+                                        'due within 48 hours — ${dueSoon.map((a) => a.title).take(3).join(', ')}'
+                                        '${dueSoon.length > 3 ? '…' : ''}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           Wrap(
                             spacing: 14,
                             runSpacing: 14,
