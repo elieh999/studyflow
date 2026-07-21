@@ -3,8 +3,11 @@ import 'package:intl/intl.dart';
 
 import '../app_scope.dart';
 import '../data/database.dart';
+import '../logic/gamification.dart';
+import '../logic/study_tips.dart';
 import '../util.dart';
 import '../widgets/common.dart';
+import '../widgets/goal_ring.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key, required this.onStartStudying});
@@ -54,6 +57,17 @@ class DashboardScreen extends StatelessWidget {
                           .where((s) => !s.sessionDate.isBefore(weekStart))
                           .fold<int>(0, (sum, s) => sum + s.duration);
 
+                      final today = DateTime(now.year, now.month, now.day);
+                      final todayMinutes = sessions
+                              .where((s) => !s.sessionDate.isBefore(today))
+                              .fold<int>(0, (sum, s) => sum + s.duration) ~/
+                          60;
+                      final totalMinutes = sessions.fold<int>(
+                              0, (sum, s) => sum + s.duration) ~/
+                          60;
+                      final level = levelForMinutes(totalMinutes);
+                      final settings = AppScope.of(context).settings;
+
                       final upcoming = assignments
                           .where((a) => !a.isCompleted)
                           .toList()
@@ -84,6 +98,73 @@ class DashboardScreen extends StatelessWidget {
                       return ListView(
                         padding: const EdgeInsets.all(20),
                         children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  GoalRing(
+                                    doneMinutes: todayMinutes,
+                                    goalMinutes: settings.dailyGoalMinutes,
+                                  ),
+                                  const SizedBox(width: 20),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.military_tech,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary),
+                                            const SizedBox(width: 8),
+                                            Text('Level $level · ${levelTitle(level)}',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleMedium),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          child: LinearProgressIndicator(
+                                            value: levelProgress(totalMinutes),
+                                            minHeight: 8,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text('$totalMinutes minutes studied all-time',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall),
+                                        const SizedBox(height: 14),
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            const Icon(
+                                                Icons.lightbulb_outline,
+                                                size: 18),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(tipForDay(now),
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodySmall),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           if (dueSoon.isNotEmpty)
                             Card(
                               color: Theme.of(context)
