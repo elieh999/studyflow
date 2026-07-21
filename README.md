@@ -40,7 +40,15 @@ package). It's a single-user, offline app.
 - **Export & backup** — save a weekly PDF report, export your assignments and
   classes to a calendar (.ics) file for Google/Outlook, and back up or restore
   all your data as a JSON file.
-- **Dark mode** — toggle at the bottom of the sidebar; it remembers your choice.
+- **Settings & themes** — light / dark / system mode, ten accent colours that
+  recolour the whole app, and a text-size option. You can also set your default
+  Pomodoro lengths, when long breaks kick in, your daily study goal, and which
+  Ollama model to use.
+- **Little touches** — press **Ctrl+K** for a command palette to jump anywhere;
+  a daily-goal progress ring and an XP/level that grows as you study; a study
+  tip of the day; a confetti burst when you finish a focus session; and longer
+  breaks every few Pomodoros. The focus timer also responds to the **spacebar**
+  (start / pause).
 
 ## The optional local-AI bit
 
