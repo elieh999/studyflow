@@ -12,11 +12,13 @@
 // The fixed port keeps the browser-storage origin stable, so everything you
 // enter is still there next time you open the app.
 
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
 const int _port = 51789;
 const String _url = 'http://127.0.0.1:$_port/';
+const String _ollama = 'http://127.0.0.1:11434';
 
 Future<void> main() async {
   _hideConsoleWindow();
@@ -60,6 +62,10 @@ Directory? _findAppDir() {
 
 Future<void> _serve(HttpRequest request, Directory appDir) async {
   try {
+    if (request.uri.path.startsWith('/ai/')) {
+      await _proxyAi(request);
+      return;
+    }
     var path = request.uri.path;
     if (path == '/' || path.isEmpty) path = '/index.html';
     final file = File('${appDir.path}${path.replaceAll('/', '\\')}');
@@ -74,6 +80,55 @@ Future<void> _serve(HttpRequest request, Directory appDir) async {
   } catch (_) {
     request.response.statusCode = HttpStatus.internalServerError;
     await request.response.close();
+  }
+}
+
+// Forward /ai/* to the local Ollama server so the browser page can use it
+// without tripping cross-origin rules.
+Future<void> _proxyAi(HttpRequest request) async {
+  final res = request.response;
+  res.headers.set('Content-Type', 'application/json');
+  final client = HttpClient();
+  try {
+    if (request.uri.path.startsWith('/ai/health')) {
+      try {
+        final req = await client.getUrl(Uri.parse('$_ollama/api/tags'));
+        final r = await req.close();
+        final body = await r.transform(utf8.decoder).join();
+        final tags = jsonDecode(body);
+        res.write(jsonEncode(
+            {'ok': true, 'models': (tags is Map) ? tags['models'] : []}));
+      } catch (e) {
+        res.write(jsonEncode({'ok': false, 'error': '$e'}));
+      }
+      await res.close();
+      return;
+    }
+
+    if (request.uri.path.startsWith('/ai/generate')) {
+      final body = await utf8.decoder.bind(request).join();
+      final payload = (jsonDecode(body.isEmpty ? '{}' : body) as Map)
+        ..['stream'] = false;
+      try {
+        final req = await client.postUrl(Uri.parse('$_ollama/api/generate'));
+        req.headers.contentType = ContentType.json;
+        req.write(jsonEncode(payload));
+        final r = await req.close();
+        final out = await r.transform(utf8.decoder).join();
+        res.statusCode = r.statusCode;
+        res.write(out);
+      } catch (e) {
+        res.statusCode = HttpStatus.badGateway;
+        res.write(jsonEncode({'error': '$e'}));
+      }
+      await res.close();
+      return;
+    }
+
+    res.statusCode = HttpStatus.notFound;
+    await res.close();
+  } finally {
+    client.close(force: true);
   }
 }
 
