@@ -202,6 +202,18 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteGradeItem(int id) =>
       (delete(gradeItems)..where((g) => g.id.equals(id))).go();
 
+  // Wipes every table (children first so foreign keys are satisfied).
+  Future<void> clearAllData() async {
+    await transaction(() async {
+      await delete(gradeItems).go();
+      await delete(flashcards).go();
+      await delete(scheduleEntries).go();
+      await delete(studySessions).go();
+      await delete(assignments).go();
+      await delete(courses).go();
+    });
+  }
+
   // ---- Backup / restore ----
   // Replaces all data with the contents of a backup produced by the app.
   Future<void> importBackup(Map<String, dynamic> data) async {
