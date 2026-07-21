@@ -181,7 +181,9 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
                       if (controller.text.trim().isEmpty) return;
                       setState(() => busy = true);
                       try {
-                        final parsed = await _ai.parseQuickAdd(
+                        final ai = OllamaService(
+                            model: AppScope.of(context).settings.aiModel);
+                        final parsed = await ai.parseQuickAdd(
                             controller.text.trim(), courses);
                         if (parsed == null) {
                           setState(() => busy = false);

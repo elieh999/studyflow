@@ -327,7 +327,9 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                       if (notesCtrl.text.trim().isEmpty) return;
                       setState(() => busy = true);
                       try {
-                        final cards = await _ai.makeFlashcards(
+                        final ai = OllamaService(
+                            model: AppScope.of(context).settings.aiModel);
+                        final cards = await ai.makeFlashcards(
                             notesCtrl.text.trim(),
                             count: count);
                         var added = 0;
