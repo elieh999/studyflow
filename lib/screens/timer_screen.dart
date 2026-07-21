@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../data/database.dart';
 import '../widgets/common.dart';
+import '../widgets/confetti.dart';
 import '../widgets/focus_garden.dart';
 
 enum Phase { study, breakTime }
@@ -20,6 +22,7 @@ class TimerScreen extends StatefulWidget {
 class _TimerScreenState extends State<TimerScreen> {
   int _studyMinutes = 25;
   int _breakMinutes = 5;
+  int _breakLenMin = 5; // length of the current break (regular or long)
 
   Phase _phase = Phase.study;
   late int _remaining = _studyMinutes * 60;
@@ -29,10 +32,27 @@ class _TimerScreenState extends State<TimerScreen> {
   DateTime? _blockStart;
   int _completedToday = 0;
   int _distractions = 0;
+  bool _isLongBreak = false;
+  bool _celebrate = false;
+  bool _loadedDefaults = false;
   final _noteCtrl = TextEditingController();
 
   int get _phaseTotal =>
-      (_phase == Phase.study ? _studyMinutes : _breakMinutes) * 60;
+      (_phase == Phase.study ? _studyMinutes : _breakLenMin) * 60;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Seed the timer from the user's saved defaults, once, while idle.
+    if (!_loadedDefaults) {
+      _loadedDefaults = true;
+      final s = AppScope.of(context).settings;
+      _studyMinutes = s.studyMinutes;
+      _breakMinutes = s.breakMinutes;
+      _breakLenMin = s.breakMinutes;
+      if (!_running && _phase == Phase.study) _remaining = _studyMinutes * 60;
+    }
+  }
 
   @override
   void dispose() {
@@ -75,6 +95,8 @@ class _TimerScreenState extends State<TimerScreen> {
 
   Future<void> _onPhaseComplete() async {
     _ticker?.cancel();
+    // Read settings before any await so we don't touch context afterwards.
+    final settings = AppScope.of(context).settings;
     if (_phase == Phase.study) {
       // Save the finished study block.
       if (_courseId != null && _blockStart != null) {
@@ -90,20 +112,28 @@ class _TimerScreenState extends State<TimerScreen> {
         _completedToday++;
       }
       _noteCtrl.clear();
+      // Every Nth session earns a longer break.
+      _isLongBreak =
+          _completedToday > 0 && _completedToday % settings.longBreakEvery == 0;
+      _breakLenMin = _isLongBreak ? settings.longBreakMinutes : _breakMinutes;
       setState(() {
         _phase = Phase.breakTime;
-        _remaining = _breakMinutes * 60;
+        _remaining = _breakLenMin * 60;
         _running = false;
         _blockStart = null;
         _distractions = 0;
+        _celebrate = true;
       });
-      _snack('Study session saved. Time for a $_breakMinutes-minute break.');
+      _snack(_isLongBreak
+          ? 'Session saved. Enjoy a longer $_breakLenMin-minute break!'
+          : 'Study session saved. Time for a $_breakLenMin-minute break.');
     } else {
       setState(() {
         _phase = Phase.study;
         _remaining = _studyMinutes * 60;
         _running = false;
         _blockStart = null;
+        _isLongBreak = false;
       });
       _snack('Break over — ready for another study session.');
     }
@@ -129,12 +159,19 @@ class _TimerScreenState extends State<TimerScreen> {
     final progress =
         _phaseTotal == 0 ? 0.0 : 1 - (_remaining / _phaseTotal);
 
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.space): () =>
+            _running ? _pause() : _start(),
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Focus timer'),
         automaticallyImplyLeading: false,
       ),
-      body: StreamBuilder<List<Course>>(
+      body: Stack(
+        children: [
+          StreamBuilder<List<Course>>(
         stream: db.watchCourses(),
         builder: (context, snap) {
           final courses = snap.data ?? [];
@@ -171,7 +208,9 @@ class _TimerScreenState extends State<TimerScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      isStudy ? 'Study session' : 'Break',
+                      isStudy
+                          ? 'Study session'
+                          : (_isLongBreak ? 'Long break' : 'Break'),
                       style: TextStyle(
                         color: isStudy ? scheme.primary : scheme.tertiary,
                         fontWeight: FontWeight.w600,
@@ -299,6 +338,17 @@ class _TimerScreenState extends State<TimerScreen> {
             ),
           );
         },
+          ),
+          if (_celebrate)
+            Positioned.fill(
+              child: ConfettiBurst(
+                onComplete: () {
+                  if (mounted) setState(() => _celebrate = false);
+                },
+              ),
+            ),
+        ],
+      ),
       ),
     );
   }
