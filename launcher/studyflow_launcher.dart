@@ -83,21 +83,50 @@ Future<void> _serve(HttpRequest request, Directory appDir) async {
   }
 }
 
+// Only requests from the app's own local origin may use the AI proxy. This
+// stops another website open in the browser from quietly driving Ollama.
+const int _maxAiRequestBytes = 64 * 1024;
+const int _maxAiResponseBytes = 4 * 1024 * 1024;
+
+bool _originAllowed(HttpRequest request) {
+  final origin = request.headers.value('origin');
+  if (origin == null) return true; // same-origin navigations / non-browser
+  return origin.startsWith('http://127.0.0.1:') ||
+      origin.startsWith('http://localhost:');
+}
+
+Future<List<int>?> _readCapped(Stream<List<int>> stream, int cap) async {
+  final bytes = <int>[];
+  await for (final chunk in stream) {
+    bytes.addAll(chunk);
+    if (bytes.length > cap) return null;
+  }
+  return bytes;
+}
+
 // Forward /ai/* to the local Ollama server so the browser page can use it
 // without tripping cross-origin rules.
 Future<void> _proxyAi(HttpRequest request) async {
   final res = request.response;
   res.headers.set('Content-Type', 'application/json');
+
+  if (!_originAllowed(request)) {
+    res.statusCode = HttpStatus.forbidden;
+    res.write(jsonEncode({'error': 'origin not allowed'}));
+    await res.close();
+    return;
+  }
+
   final client = HttpClient();
   try {
     if (request.uri.path.startsWith('/ai/health')) {
       try {
         final req = await client.getUrl(Uri.parse('$_ollama/api/tags'));
         final r = await req.close();
-        final body = await r.transform(utf8.decoder).join();
-        final tags = jsonDecode(body);
+        final raw = await _readCapped(r, _maxAiResponseBytes);
+        final tags = raw == null ? null : jsonDecode(utf8.decode(raw));
         res.write(jsonEncode(
-            {'ok': true, 'models': (tags is Map) ? tags['models'] : []}));
+            {'ok': tags != null, 'models': (tags is Map) ? tags['models'] : []}));
       } catch (e) {
         res.write(jsonEncode({'ok': false, 'error': '$e'}));
       }
@@ -106,7 +135,14 @@ Future<void> _proxyAi(HttpRequest request) async {
     }
 
     if (request.uri.path.startsWith('/ai/generate')) {
-      final body = await utf8.decoder.bind(request).join();
+      final rawBody = await _readCapped(request, _maxAiRequestBytes);
+      if (rawBody == null) {
+        res.statusCode = HttpStatus.requestEntityTooLarge;
+        res.write(jsonEncode({'error': 'request too large'}));
+        await res.close();
+        return;
+      }
+      final body = utf8.decode(rawBody, allowMalformed: true);
       final payload = (jsonDecode(body.isEmpty ? '{}' : body) as Map)
         ..['stream'] = false;
       try {
@@ -114,9 +150,14 @@ Future<void> _proxyAi(HttpRequest request) async {
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode(payload));
         final r = await req.close();
-        final out = await r.transform(utf8.decoder).join();
-        res.statusCode = r.statusCode;
-        res.write(out);
+        final out = await _readCapped(r, _maxAiResponseBytes);
+        if (out == null) {
+          res.statusCode = HttpStatus.badGateway;
+          res.write(jsonEncode({'error': 'model response too large'}));
+        } else {
+          res.statusCode = r.statusCode;
+          res.add(out);
+        }
       } catch (e) {
         res.statusCode = HttpStatus.badGateway;
         res.write(jsonEncode({'error': '$e'}));
