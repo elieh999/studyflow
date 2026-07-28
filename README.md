@@ -37,10 +37,12 @@ I wanted to handle passwords properly, so here is what actually happens:
 
 - Passwords are never saved. Only a salted Argon2id hash is kept (Argon2id is a memory hard function and the current recommendation), and signing in re derives it and compares in constant time. Accounts created under the older PBKDF2 scheme still work and are upgraded to Argon2id automatically the next time they sign in.
 - After a few wrong guesses in a row an account locks for a short cooldown that grows with each further failure, so even local guessing is slow.
-- Every account gets its own separate local database.
-- Backups can be encrypted with AES 256 GCM using a key stretched from a passphrase you pick, so a backup file is useless to anyone without it. A wrong passphrase fails cleanly and never half writes your data.
+- **The live database is encrypted at rest.** When you sign in, a second key is derived from your password (Argon2id, with its own salt) and held only in memory for that session. The app runs on an in memory database and saves everything as a single AES 256 GCM encrypted snapshot after each change. Nothing readable is ever written to disk, and the key is never stored anywhere. On the next login it is derived again from your password and used to decrypt the snapshot.
+- Backups can be encrypted with AES 256 GCM the same way, so a backup file is useless to anyone without the passphrase. A wrong passphrase fails cleanly and never half writes your data.
 
-Being straight about what this is: StudyFlow is a local, offline app with no server. The login guards the app and the encrypted backups protect files you share, but the live database on disk is not itself encrypted, and that is a deliberate, accepted limitation for this build. I looked at encrypting it with something like SQLCipher, but the app runs in the browser where that is not really available, and the only way to unlock an encrypted database on its own would be to keep the key sitting in local storage in plain sight, which just moves the plaintext somewhere else and buys almost nothing. So anyone with direct access to this computer's files could read the local data without the password. The one sensitive thing stored on the device is your password hash (salted Argon2id), never the password itself. Real security that nobody can get around would need a proper backend holding the data, which is beyond an offline build like this one. Sharing the source code is fine, since no passwords or secrets are kept in the repo.
+Because the encryption key comes only from your password and is never stored, **there is no way to recover your data if you forget your password**. That is the honest trade off of real encryption: no backdoor, for anyone.
+
+Being straight about the rest: StudyFlow is a local, offline app with no server, so it cannot offer the guarantees a proper backend with server side auth would. The one thing stored on the device that is derived from your password is the Argon2id login hash, never the password itself, and the study data itself now sits encrypted. If you created accounts in an older build (before at rest encryption), that earlier data is not migrated automatically; export an encrypted backup first and restore it into the new build. Sharing the source code is fine, since no passwords or secrets are kept in the repo.
 
 ## How to run it
 
@@ -66,7 +68,7 @@ flutter run -d chrome
 ## Known limitations
 
 - Windows only for now, since that is the only platform I have actually built and tested.
-- The live database on disk is not encrypted (see the security note above). Use an encrypted backup if you want a protected copy.
+- The live database is encrypted with a key derived from your password, so if you forget your password the data cannot be recovered (see the security note above).
 - No cloud sync, so your data stays on one machine. The backup file is there if you want to move it.
 - No pop up reminders while the app is closed. Deadlines show inside the app instead.
 - The AI features need Ollama running, otherwise they simply stay hidden. Study notes in scripts other than Latin may show as question marks in the PDF report, since it uses a built in Latin font.
