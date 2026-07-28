@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
+
+import 'mem_executor.dart';
 
 part 'database.g.dart';
 
@@ -100,8 +101,9 @@ class GradeItems extends Table {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  // Each signed-in user gets their own database file/store via [dbName].
-  AppDatabase(String dbName) : super(_openConnection(dbName));
+  // In-memory database. Durable data lives in the per-user encrypted vault,
+  // which loads a snapshot in on login and saves it back on every change.
+  AppDatabase() : super(openInMemoryExecutor());
 
   // Used by tests to inject an in-memory executor.
   AppDatabase.forTesting(super.executor);
@@ -244,6 +246,23 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  // Dumps every table to a plain map (mirror of [importBackup]). Used for the
+  // encrypted-at-rest vault and for backups.
+  Future<Map<String, dynamic>> exportAll() async {
+    return {
+      'version': 3,
+      'courses': (await allCourses()).map((c) => c.toJson()).toList(),
+      'assignments': (await allAssignments()).map((a) => a.toJson()).toList(),
+      'sessions': (await allSessions()).map((s) => s.toJson()).toList(),
+      'schedule': (await allSchedule()).map((e) => e.toJson()).toList(),
+      'flashcards':
+          (await select(flashcards).get()).map((f) => f.toJson()).toList(),
+      'grades':
+          (await select(gradeItems).get()).map((g) => g.toJson()).toList(),
+      'notes': (await select(notes).get()).map((n) => n.toJson()).toList(),
+    };
+  }
+
   // ---- Backup / restore ----
   // Replaces all data with the contents of a backup produced by the app.
   Future<void> importBackup(Map<String, dynamic> data) async {
@@ -294,15 +313,3 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-// drift_flutter picks the right backend automatically:
-//  - desktop/mobile: a native SQLite file under the app documents folder
-//  - web: a WASM SQLite build persisted in the browser (IndexedDB/OPFS)
-QueryExecutor _openConnection(String name) {
-  return driftDatabase(
-    name: name,
-    web: DriftWebOptions(
-      sqlite3Wasm: Uri.parse('sqlite3.wasm'),
-      driftWorker: Uri.parse('drift_worker.js'),
-    ),
-  );
-}
