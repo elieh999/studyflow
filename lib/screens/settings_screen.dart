@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../export/backup_actions.dart';
 import '../theme.dart';
+import '../widgets/color_picker_dialog.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -84,6 +85,7 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   for (final a in accentThemes)
                     _swatch(context, settings, a),
+                  _customSwatch(context, settings),
                 ],
               ),
               const SizedBox(height: 20),
@@ -231,6 +233,49 @@ class SettingsScreen extends StatelessWidget {
           child: selected
               ? const Icon(Icons.check, color: Colors.white, size: 20)
               : null,
+        ),
+      ),
+    );
+  }
+
+  // A "pick any colour" swatch. Selected when the current seed is not one of
+  // the built in presets.
+  Widget _customSwatch(BuildContext context, SettingsController settings) {
+    final isPreset = accentThemes
+        .any((a) => a.seed.toARGB32() == settings.seed.toARGB32());
+    final selected = !isPreset;
+    return Tooltip(
+      message: 'Custom colour',
+      child: GestureDetector(
+        onTap: () async {
+          final picked = await showAccentColorPicker(context, settings.seed);
+          if (picked != null) await settings.setSeed(picked);
+        },
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            gradient: const SweepGradient(colors: [
+              Color(0xFFD64545),
+              Color(0xFFE0952B),
+              Color(0xFF3F9142),
+              Color(0xFF4F86C6),
+              Color(0xFF7A5CC6),
+              Color(0xFFD64545),
+            ]),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Colors.transparent,
+              width: 3,
+            ),
+          ),
+          child: Icon(
+            selected ? Icons.check : Icons.add,
+            color: Colors.white,
+            size: 20,
+          ),
         ),
       ),
     );
