@@ -35,11 +35,12 @@ The flashcard maker and the plain English quick add for assignments talk to a lo
 
 I wanted to handle passwords properly, so here is what actually happens:
 
-- Passwords are never saved. Only a salted PBKDF2 hash (with a high iteration count) is kept, and signing in re derives it and compares in constant time.
+- Passwords are never saved. Only a salted Argon2id hash is kept (Argon2id is a memory hard function and the current recommendation), and signing in re derives it and compares in constant time. Accounts created under the older PBKDF2 scheme still work and are upgraded to Argon2id automatically the next time they sign in.
+- After a few wrong guesses in a row an account locks for a short cooldown that grows with each further failure, so even local guessing is slow.
 - Every account gets its own separate local database.
-- Backups can be encrypted with AES 256 GCM using a key made from a passphrase you pick, so a backup file is useless to anyone without it.
+- Backups can be encrypted with AES 256 GCM using a key stretched from a passphrase you pick, so a backup file is useless to anyone without it. A wrong passphrase fails cleanly and never half writes your data.
 
-Being straight about what this is: StudyFlow is a local, offline app with no server. The login guards the app itself and the encrypted backups protect files you share, but the live database sits in this computer's local storage, so someone with direct access to the machine's files could still read it without the password. There is no server enforcing anything. Real security that nobody can get around would need a proper backend holding the data, which is beyond an offline build like this one. Sharing the source code is fine, since no passwords or secrets are kept in the repo.
+Being straight about what this is: StudyFlow is a local, offline app with no server. The login guards the app and the encrypted backups protect files you share, but the live database on disk is not itself encrypted, and that is a deliberate, accepted limitation for this build. I looked at encrypting it with something like SQLCipher, but the app runs in the browser where that is not really available, and the only way to unlock an encrypted database on its own would be to keep the key sitting in local storage in plain sight, which just moves the plaintext somewhere else and buys almost nothing. So anyone with direct access to this computer's files could read the local data without the password. The one sensitive thing stored on the device is your password hash (salted Argon2id), never the password itself. Real security that nobody can get around would need a proper backend holding the data, which is beyond an offline build like this one. Sharing the source code is fine, since no passwords or secrets are kept in the repo.
 
 ## How to run it
 
@@ -65,9 +66,10 @@ flutter run -d chrome
 ## Known limitations
 
 - Windows only for now, since that is the only platform I have actually built and tested.
+- The live database on disk is not encrypted (see the security note above). Use an encrypted backup if you want a protected copy.
 - No cloud sync, so your data stays on one machine. The backup file is there if you want to move it.
 - No pop up reminders while the app is closed. Deadlines show inside the app instead.
-- The AI features need Ollama running, otherwise they simply stay hidden.
+- The AI features need Ollama running, otherwise they simply stay hidden. Study notes in scripts other than Latin may show as question marks in the PDF report, since it uses a built in Latin font.
 
 ## What I would add next
 
