@@ -1,0 +1,11 @@
+# Keep line endings consistent across machines
+* text=auto eol=lf
+
+# Treat these as binary so git does not touch them
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.wasm binary
+*.ttf binary
+*.otf binary
