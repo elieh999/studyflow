@@ -63,7 +63,7 @@ void main() {
     test('an old pbkdf2 account is upgraded to argon2id after signing in',
         () async {
       final legacy = await pbkdf2HashForTesting('mypassword');
-      final account = Account('alice', legacy);
+      final account = Account('alice', legacy, ''); // legacy: no vault salt
       SharedPreferences.setMockInitialValues({
         'accounts': jsonEncode([account.toJson()]),
       });
@@ -79,6 +79,9 @@ void main() {
       expect(cred.algo, 'argon2id');
       // And the upgraded hash still verifies the same password.
       expect(await verifyPassword('mypassword', cred), isTrue);
+      // The account also gains a vault salt and a session key on login.
+      expect(stored.first['encSalt'] as String, isNotEmpty);
+      expect(auth.sessionKey, isNotNull);
     });
   });
 }
