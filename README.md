@@ -1,138 +1,75 @@
 # StudyFlow
 
-StudyFlow is a planner I built to keep my coursework in one place instead of
-scattered across sticky notes and three different apps. You add your courses,
-throw your assignments in with due dates, run a Pomodoro-style focus timer while
-you study, track your grades, and drill flashcards. Everything is stored locally
-on your own machine — there's no account, no login, and it works completely
-offline.
+StudyFlow is a study planner I built to keep all my coursework in one place instead of spreading it across sticky notes and a few different apps. You add your courses, drop in your assignments with due dates, run a focus timer while you study, keep track of your grades, and drill flashcards. Everything is saved on your own computer and the whole thing works offline, so no internet is needed once it is open.
 
-I wrote it in Flutter (Dart) with a local SQLite database (via the `drift`
-package). It's a single-user, offline app.
+I wrote it in Flutter (Dart) and it stores everything in a local SQLite database through the drift package. There is a small account system so more than one person can use the same machine and keep their data separate.
+
+![Dashboard](screenshots/dashboard.png)
 
 ## What it does
 
-- **Accounts** — create a local account and sign in; each account keeps its own
-  separate study data on this device (see "Security & your data" below).
-- **Dashboard** — a greeting header, today's classes, your soonest upcoming
-  assignments, study time this week, a "due within 48 hours" alert, and a
-  "Start studying" button.
-- **Courses** — add / edit / delete courses with an instructor and a colour.
-  Each course shows its total study time and how many assignments are still open.
-- **Assignments** — add / edit / delete, mark complete, set priority
-  (low / medium / high), a due date, and an estimated number of hours. Search
-  and filter by course, status or priority; sorts by due date.
-- **Focus timer** — a Pomodoro timer (25 min study / 5 min break, both
-  adjustable). Pick the course, then start / pause / reset. Finished study blocks
-  save automatically. You can jot a note per session and tap a button to log
-  distractions. A little "focus garden" plant grows the more you study.
-- **Weekly schedule** — add your recurring class times per day; these feed the
-  "today's classes" list on the dashboard.
-- **Flashcards** — make decks per course and review them with spaced repetition
-  (an SM-2 scheduler, the same idea Anki uses). If you have a local AI model
-  running (see below), you can paste your notes and it'll draft cards for you.
-- **Notes** — keep free-form study notes per course, and turn any note into
-  flashcards in one tap (when the local AI is available).
-- **Study plan** — give assignments an estimated time and it builds a suggested
-  day-by-day plan, earliest-deadline-first, capped at how much you want to study
-  per day. It warns you when something won't fit before it's due.
-- **Grades** — break each course into weighted items (Midterm 30%, Final 40%…),
-  see your current grade, letter and GPA point, and a "what do I need on the
-  rest to hit X%?" calculator.
-- **Insights** — study time per course (bar chart), a 12-week study-activity
-  heatmap, your daily streak, achievement badges, a "how much last-minute
-  studying you do" figure, and export buttons (see below).
-- **Export & backup** — save a weekly PDF report, export your assignments and
-  classes to a calendar (.ics) file for Google/Outlook, and back up or restore
-  all your data as a JSON file — optionally **encrypted** with a passphrase
-  (AES-256-GCM).
-- **Settings & themes** — light / dark / system mode, ten accent colours that
-  recolour the whole app, and a text-size option. You can also set your default
-  Pomodoro lengths, when long breaks kick in, your daily study goal, and which
-  Ollama model to use.
-- **Little touches** — press **Ctrl+K** for a command palette to jump anywhere;
-  a daily-goal progress ring and an XP/level that grows as you study; a study
-  tip of the day; a confetti burst when you finish a focus session; and longer
-  breaks every few Pomodoros. The focus timer also responds to the **spacebar**
-  (start / pause).
+- **Accounts.** Create a local account and sign in. Each account keeps its own study data on the device. More on how that is handled in the security section below.
+- **Dashboard.** A friendly greeting, your classes today, the assignments coming up soonest, how much you have studied this week, a heads up for anything due within 48 hours, and a button that jumps straight into a focus session.
+- **Courses.** Add, edit and delete courses, each with an instructor and a colour. Every course shows its total study time and how many assignments are still open.
+- **Assignments.** Add, edit, delete and tick them off. Set a priority, a due date and a rough estimate of how long it will take. Search them and filter by course, status or priority.
+- **Focus timer.** A Pomodoro style timer that you can adjust. Pick the course, then start, pause or reset. Finished study blocks are saved on their own. You can leave a note on a session and tap a button whenever you get distracted. A little plant in the corner grows the more you study, and you get a longer break every few rounds.
+- **Weekly schedule.** Add your recurring class times for each day. These also feed the classes today list on the dashboard.
+- **Flashcards.** Build decks per course and review them with spaced repetition, the same idea Anki uses. If you have a local AI model running you can paste your notes and it drafts cards for you.
+- **Notes.** Keep free form notes per course, and turn any note into flashcards with one tap when the AI is available.
+- **Study plan.** Give your assignments a rough time estimate and it spreads the work across the days before each one is due, soonest deadlines first, capped by how much you want to study per day. It warns you when something will not fit in time.
+- **Grades.** Break a course into weighted pieces like a midterm and a final, see your current grade, letter and GPA point, and work out what you still need on the rest to hit a target.
+- **Insights.** A bar chart of study time per course, an activity heatmap over the last twelve weeks, your daily streak, achievement badges, and how much of your studying happens at the last minute.
+- **Export and backup.** Save a weekly PDF report, send your assignments and classes to a calendar file for Google or Outlook, and back up or restore everything as a JSON file that you can optionally lock with a passphrase.
+- **Themes and settings.** Light, dark or system mode, ten accent colours that recolour the whole app, and a text size option. You can also set your default timer lengths, your daily study goal, and which AI model to use.
+- **Small touches.** Press Ctrl+K anywhere for a quick jump menu, watch an XP level climb as you study, read a study tip of the day, and get a little confetti when you finish a session. The timer also responds to the spacebar.
 
-## The optional local-AI bit
+![Login](screenshots/login.png)
 
-The flashcard generator and the "quick add" for assignments use a local AI model
-through [Ollama](https://ollama.com), so nothing leaves your machine. These
-features only show up when Ollama is running with a model pulled — the rest of
-the app works completely fine without it. I tested with the small
-`qwen2.5:0.5b` model; a larger model gives noticeably better cards. The launcher
-talks to Ollama for the app so the browser doesn't have to.
+## The optional local AI
 
-## Security & your data
+The flashcard maker and the plain English quick add for assignments talk to a local model through [Ollama](https://ollama.com), so nothing ever leaves your computer. These bits only show up when Ollama is running with a model pulled, and the rest of the app is completely happy without it. I tested with the small qwen2.5:0.5b model and a bigger one writes noticeably better cards. The launcher passes the requests through to Ollama so the browser never has to.
 
-I wanted to handle credentials properly, so:
+## Security and your data
 
-- Passwords are **never stored**. Only a salted **PBKDF2-HMAC-SHA256** hash
-  (150,000 iterations) is kept, and login re-derives and compares it in constant
-  time.
-- Each account's data lives in its **own separate local database**.
-- Backups can be **encrypted with AES-256-GCM** using a key derived from a
-  passphrase you choose — so a backup file is useless without it.
+I wanted to handle passwords properly, so here is what actually happens:
 
-Being honest about what this is and isn't: StudyFlow is a **local, offline,
-single-user app with no server**. The login gates the app's UI, and encrypted
-backups protect files you export or share. But the *live* database sits in this
-device's local storage, so someone with direct access to the computer's files
-could still read it without the password — there's no server enforcing access.
-Real "nobody can bypass it" multi-user security would need a backend holding the
-data and doing auth, which is out of scope for this offline build. Publishing the
-**source code** is safe: no passwords or secrets are stored in the repo.
+- Passwords are never saved. Only a salted PBKDF2 hash (with a high iteration count) is kept, and signing in re derives it and compares in constant time.
+- Every account gets its own separate local database.
+- Backups can be encrypted with AES 256 GCM using a key made from a passphrase you pick, so a backup file is useless to anyone without it.
 
-## How to open it
+Being straight about what this is: StudyFlow is a local, offline app with no server. The login guards the app itself and the encrypted backups protect files you share, but the live database sits in this computer's local storage, so someone with direct access to the machine's files could still read it without the password. There is no server enforcing anything. Real security that nobody can get around would need a proper backend holding the data, which is beyond an offline build like this one. Sharing the source code is fine, since no passwords or secrets are kept in the repo.
 
-Double-click **`Open StudyFlow.exe`**. That's it — the app opens in its own
-window. There's nothing to install. The first time, you'll create a local
-account (username + password); after that you sign in each time you open it.
-Your data is created automatically and is still there next time.
+## How to run it
+
+If you just want to use it, double click **Open StudyFlow.exe** in the project folder. It opens in its own window, there is nothing to install, and the first time you will create a local account. Because I am on a locked down laptop with no admin rights, I could not install the Visual Studio C++ tools that a full native Windows build needs, so the launcher is a small program I compiled with `dart compile exe` that serves the app locally and opens it using the browser that already ships with Windows. It still runs offline and keeps your data on the device.
+
+If you have the Flutter SDK and want to run it from source:
+
+```
+flutter pub get
+flutter run -d chrome
+```
+
+## How it is put together
+
+- `lib/data/` holds the drift database, the tables and the queries.
+- `lib/security/` has the password hashing, the encryption helpers and the account logic.
+- `lib/logic/` is the plain Dart I could test on its own: the spaced repetition scheduler, the grade maths, the study planner and the insight helpers.
+- `lib/screens/` is one file per screen.
+- `lib/ai/` talks to the local model, and `lib/export/` builds the PDF, calendar and backup files.
+- `launcher/` is the source for the Open StudyFlow.exe launcher.
+- `test/` covers the database, the logic and the small helpers.
 
 ## Known limitations
 
-- **Windows only** for now — that's the only platform I've actually built and
-  tested.
-- Because this is my locked-down laptop (no admin rights), I couldn't install the
-  Visual Studio C++ build tools that `flutter build windows` needs, so I couldn't
-  produce a fully standalone native `.exe`. Instead `Open StudyFlow.exe` is a
-  small launcher I compiled with `dart compile exe` (a real compiled program, not
-  a batch file) that serves the app locally and opens it in an app window using
-  the Edge/Chrome already on the PC. It still runs offline and stores data
-  locally.
-- Data lives in this machine's local browser storage — there's no cloud sync, so
-  it doesn't follow you to another computer (that's what the JSON backup is for).
-- The AI features need Ollama installed and running; without it they're just
-  hidden.
-- No pop-up reminders while the app is closed — deadlines show up inside the app
-  (including the "due within 48 hours" banner) but it won't notify you in the
-  background.
+- Windows only for now, since that is the only platform I have actually built and tested.
+- No cloud sync, so your data stays on one machine. The backup file is there if you want to move it.
+- No pop up reminders while the app is closed. Deadlines show inside the app instead.
+- The AI features need Ollama running, otherwise they simply stay hidden.
 
-## What I'd add next
+## What I would add next
 
-- Get it building as a proper native Windows `.exe` once I'm on a machine where I
-  can install the C++ build tools.
-- Background desktop notifications for deadlines.
-- Editing schedule entries instead of deleting and re-adding them.
-- Let the study planner work around my actual class times, not just a daily cap.
+- A proper native Windows build once I am on a machine where I can install the C++ tools.
+- Desktop reminders for deadlines.
+- Letting the study planner work around my real class times, not just a daily cap.
 - Maybe cloud sync much later so my phone and laptop share the same data.
-
-## How it's put together
-
-- `lib/data/database.dart` — the drift tables (Course, Assignment, StudySession,
-  ScheduleEntry, Flashcard, GradeItem) and all the queries.
-- `lib/logic/` — the pure logic I could unit-test on its own: the SM-2 flashcard
-  scheduler, grade maths, the study-plan generator, and the insight helpers.
-- `lib/ai/ollama_service.dart` — talks to the local model through the launcher.
-- `lib/export/` — the PDF, .ics and JSON backup builders.
-- `lib/screens/` — one file per screen.
-- `launcher/studyflow_launcher.dart` — the source for the `Open StudyFlow.exe`
-  launcher (also proxies AI requests to Ollama).
-- `test/` — tests for the database, the SM-2/grade/planner logic, backup
-  round-trips, and the small helpers.
-
-If you have the Flutter SDK and want to run it from source: `flutter run -d
-chrome` (or `-d windows` on a machine with the C++ build tools installed).
