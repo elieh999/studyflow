@@ -154,6 +154,48 @@ Future<bool> verifyPassword(String password, PasswordHash stored) async {
 // successful login.
 bool needsRehash(PasswordHash stored) => stored.algo != 'argon2id';
 
+// ---- Vault key handling -----------------------------------------------------
+// The live database is encrypted at rest with a key derived from the user's
+// login password via Argon2id. The key lives only in memory for the session
+// and is never written anywhere.
+
+Future<List<int>> deriveVaultKey(String password, String saltBase64) {
+  return _deriveArgon2(
+    password: password,
+    salt: base64Decode(saltBase64),
+    memory: kArgonMemory,
+    iterations: kArgonIterations,
+    parallelism: kArgonParallelism,
+  );
+}
+
+String newSaltBase64() => base64Encode(_randomBytes(16));
+
+// Encrypt with an already-derived key (no per-call KDF, so this is fast enough
+// to run after every change to the database).
+Future<String> encryptWithKey(String plaintext, List<int> key) async {
+  final algo = AesGcm.with256bits();
+  final box = await algo.encrypt(utf8.encode(plaintext), secretKey: SecretKey(key));
+  return jsonEncode({
+    'format': 'studyflow-vault-v1',
+    'nonce': base64Encode(box.nonce),
+    'ciphertext': base64Encode(box.cipherText),
+    'mac': base64Encode(box.mac.bytes),
+  });
+}
+
+Future<String> decryptWithKey(String envelope, List<int> key) async {
+  final env = jsonDecode(envelope) as Map<String, dynamic>;
+  final algo = AesGcm.with256bits();
+  final box = SecretBox(
+    base64Decode(env['ciphertext'] as String),
+    nonce: base64Decode(env['nonce'] as String),
+    mac: Mac(base64Decode(env['mac'] as String)),
+  );
+  final clear = await algo.decrypt(box, secretKey: SecretKey(key));
+  return utf8.decode(clear);
+}
+
 // Seal a string with AES-256-GCM; the result is a self-describing JSON envelope
 // that carries the salt/nonce/mac needed to open it again with the passphrase.
 Future<String> encryptString(String plaintext, String passphrase) async {
