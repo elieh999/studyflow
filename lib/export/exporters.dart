@@ -25,24 +25,26 @@ String buildIcs({
   required DateTime now,
 }) {
   final byId = {for (final c in courses) c.id: c};
-  final b = StringBuffer()
-    ..writeln('BEGIN:VCALENDAR')
-    ..writeln('VERSION:2.0')
-    ..writeln('PRODID:-//StudyFlow//EN')
-    ..writeln('CALSCALE:GREGORIAN');
+  final lines = <String>[
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//StudyFlow//EN',
+    'CALSCALE:GREGORIAN',
+  ];
 
   for (final a in assignments) {
     final course = byId[a.courseId]?.name ?? 'Course';
     final end = a.dueDate.add(const Duration(minutes: 30));
-    b
-      ..writeln('BEGIN:VEVENT')
-      ..writeln('UID:assignment-${a.id}@studyflow')
-      ..writeln('DTSTAMP:${_icsStamp(now)}')
-      ..writeln('DTSTART:${_icsStamp(a.dueDate)}')
-      ..writeln('DTEND:${_icsStamp(end)}')
-      ..writeln('SUMMARY:[$course] ${_esc(a.title)}')
-      ..writeln('DESCRIPTION:${_esc(a.description)}')
-      ..writeln('END:VEVENT');
+    lines.addAll([
+      'BEGIN:VEVENT',
+      'UID:assignment-${a.id}@studyflow',
+      'DTSTAMP:${_icsStamp(now)}',
+      'DTSTART:${_icsStamp(a.dueDate)}',
+      'DTEND:${_icsStamp(end)}',
+      'SUMMARY:[${_esc(course)}] ${_esc(a.title)}',
+      'DESCRIPTION:${_esc(a.description)}',
+      'END:VEVENT',
+    ]);
   }
 
   for (final e in schedule) {
@@ -54,20 +56,24 @@ String buildIcs({
         int.tryParse(sp.first) ?? 9, int.tryParse(sp.last) ?? 0);
     final end = DateTime(first.year, first.month, first.day,
         int.tryParse(ep.first) ?? 10, int.tryParse(ep.last) ?? 0);
-    b
-      ..writeln('BEGIN:VEVENT')
-      ..writeln('UID:class-${e.id}@studyflow')
-      ..writeln('DTSTAMP:${_icsStamp(now)}')
-      ..writeln('DTSTART:${_icsStamp(start)}')
-      ..writeln('DTEND:${_icsStamp(end)}')
-      ..writeln('RRULE:FREQ=WEEKLY;BYDAY=${_byDay[(e.dayOfWeek - 1) % 7]}')
-      ..writeln('SUMMARY:$course'
-          '${e.location.isNotEmpty ? ' (${_esc(e.location)})' : ''}')
-      ..writeln('END:VEVENT');
+    final summary = e.location.isNotEmpty
+        ? '${_esc(course)} (${_esc(e.location)})'
+        : _esc(course);
+    lines.addAll([
+      'BEGIN:VEVENT',
+      'UID:class-${e.id}@studyflow',
+      'DTSTAMP:${_icsStamp(now)}',
+      'DTSTART:${_icsStamp(start)}',
+      'DTEND:${_icsStamp(end)}',
+      'RRULE:FREQ=WEEKLY;BYDAY=${_byDay[(e.dayOfWeek - 1) % 7]}',
+      'SUMMARY:$summary',
+      'END:VEVENT',
+    ]);
   }
 
-  b.writeln('END:VCALENDAR');
-  return b.toString();
+  lines.add('END:VCALENDAR');
+  // iCalendar requires CRLF line endings and content lines folded at 75 octets.
+  return '${lines.map(_foldIcsLine).join('\r\n')}\r\n';
 }
 
 DateTime _nextWeekday(DateTime from, int weekday) {
@@ -77,8 +83,32 @@ DateTime _nextWeekday(DateTime from, int weekday) {
   return today.add(Duration(days: delta));
 }
 
-String _esc(String s) =>
-    s.replaceAll('\\', '\\\\').replaceAll(',', '\\,').replaceAll('\n', '\\n');
+String _esc(String s) => s
+    .replaceAll('\\', '\\\\')
+    .replaceAll(';', '\\;')
+    .replaceAll(',', '\\,')
+    .replaceAll('\r\n', '\\n')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\n');
+
+// Fold a content line to 75 octets per physical line, never splitting a
+// multi-byte character. Continuation lines start with a single space.
+String _foldIcsLine(String line) {
+  if (utf8.encode(line).length <= 75) return line;
+  final buf = StringBuffer();
+  var used = 0;
+  for (final rune in line.runes) {
+    final ch = String.fromCharCode(rune);
+    final n = utf8.encode(ch).length;
+    if (used + n > 75) {
+      buf.write('\r\n ');
+      used = 1; // leading space counts toward the 75
+    }
+    buf.write(ch);
+    used += n;
+  }
+  return buf.toString();
+}
 
 // ---- JSON backup / restore ---------------------------------------------------
 
@@ -105,6 +135,14 @@ String buildBackupJson({
 }
 
 // ---- Weekly PDF report -------------------------------------------------------
+
+// The bundled PDF font only covers Latin-1. Map anything outside that range to
+// a safe character so a note or title in another script can't crash the export.
+String _pdfSafe(String s) => String.fromCharCodes(s.runes.map((r) {
+      if (r == 9 || r == 10 || r == 13) return 32; // whitespace
+      if ((r >= 32 && r <= 126) || (r >= 160 && r <= 255)) return r;
+      return 63; // '?'
+    }));
 
 Future<Uint8List> buildWeeklyReport({
   required List<Course> courses,
@@ -137,11 +175,11 @@ Future<Uint8List> buildWeeklyReport({
       build: (context) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('StudyFlow — weekly report',
+          pw.Text('StudyFlow weekly report',
               style:
                   pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
           pw.Text(
-              'Week of ${df.format(weekStart)} — generated ${df.format(now)}',
+              'Week of ${df.format(weekStart)}, generated ${df.format(now)}',
               style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
           pw.SizedBox(height: 16),
           pw.Text('Total study time this week: ${formatDuration(totalSecs)}',
@@ -158,8 +196,8 @@ Future<Uint8List> buildWeeklyReport({
               children: [
                 for (final e in perCourse.entries)
                   pw.Bullet(
-                      text:
-                          '${byId[e.key]?.name ?? 'Course'}: ${formatDuration(e.value)}'),
+                      text: _pdfSafe(
+                          '${byId[e.key]?.name ?? 'Course'}: ${formatDuration(e.value)}')),
               ],
             ),
           pw.SizedBox(height: 12),
@@ -177,9 +215,9 @@ Future<Uint8List> buildWeeklyReport({
               children: [
                 for (final a in upcoming.take(12))
                   pw.Bullet(
-                      text:
-                          '${DateFormat('EEE d MMM, HH:mm').format(a.dueDate)} — '
-                          '${byId[a.courseId]?.name ?? ''}: ${a.title}'),
+                      text: _pdfSafe(
+                          '${DateFormat('EEE d MMM, HH:mm').format(a.dueDate)}  '
+                          '${byId[a.courseId]?.name ?? ''}: ${a.title}')),
               ],
             ),
         ],
