@@ -7,16 +7,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'crypto.dart';
 
 class Account {
-  const Account(this.username, this.cred);
+  const Account(this.username, this.cred, this.encSalt);
   final String username;
   final PasswordHash cred;
+  // Salt used to derive the database encryption key. Empty for legacy accounts
+  // created before at-rest encryption; filled in on the next login.
+  final String encSalt;
+
+  Account copyWith({PasswordHash? cred, String? encSalt}) =>
+      Account(username, cred ?? this.cred, encSalt ?? this.encSalt);
 
   Map<String, dynamic> toJson() =>
-      {'username': username, 'cred': cred.toJson()};
+      {'username': username, 'cred': cred.toJson(), 'encSalt': encSalt};
 
   factory Account.fromJson(Map<String, dynamic> j) => Account(
         j['username'] as String,
         PasswordHash.fromJson((j['cred'] as Map).cast<String, dynamic>()),
+        j['encSalt'] as String? ?? '',
       );
 }
 
@@ -61,10 +68,15 @@ class AuthController extends ChangeNotifier {
   final Map<String, _Lockout> _lockouts = {};
   String? _currentUser;
   String? _lastUser;
+  List<int>? _sessionKey;
 
   bool get isLoggedIn => _currentUser != null;
   String? get currentUser => _currentUser;
   String? get lastUser => _lastUser;
+
+  // The database encryption key for the signed-in user. Only in memory, only
+  // while logged in. Never persisted anywhere.
+  List<int>? get sessionKey => _sessionKey;
   bool get hasAccounts => _accounts.isNotEmpty;
   List<String> get usernames => _accounts.map((a) => a.username).toList();
 
@@ -107,8 +119,10 @@ class AuthController extends ChangeNotifier {
       return 'That username is already taken.';
     }
     final cred = await hashPassword(password);
-    _accounts = [..._accounts, Account(name, cred)];
+    final encSalt = newSaltBase64();
+    _accounts = [..._accounts, Account(name, cred, encSalt)];
     await _persistAccounts();
+    _sessionKey = await deriveVaultKey(password, encSalt);
     _currentUser = name;
     _lastUser = name;
     await _prefs.setString(_kLastUser, name);
@@ -134,17 +148,33 @@ class AuthController extends ChangeNotifier {
       return 'Incorrect password.';
     }
 
-    // Success: clear any lockout and upgrade an old hash to Argon2id.
+    // Success: clear any lockout.
     _lockouts.remove(key);
     await _persistLockouts();
-    if (needsRehash(account.cred)) {
-      final upgraded = await hashPassword(password);
-      _accounts[index] = Account(account.username, upgraded);
+
+    var acc = account;
+    var changed = false;
+    // Legacy accounts (made before at-rest encryption) have no vault salt yet.
+    var encSalt = acc.encSalt;
+    if (encSalt.isEmpty) {
+      encSalt = newSaltBase64();
+      changed = true;
+    }
+    // Upgrade an old PBKDF2 hash to Argon2id on the way in.
+    var cred = acc.cred;
+    if (needsRehash(acc.cred)) {
+      cred = await hashPassword(password);
+      changed = true;
+    }
+    if (changed) {
+      acc = acc.copyWith(cred: cred, encSalt: encSalt);
+      _accounts[index] = acc;
       await _persistAccounts();
     }
-    _currentUser = account.username;
-    _lastUser = account.username;
-    await _prefs.setString(_kLastUser, account.username);
+    _sessionKey = await deriveVaultKey(password, encSalt);
+    _currentUser = acc.username;
+    _lastUser = acc.username;
+    await _prefs.setString(_kLastUser, acc.username);
     notifyListeners();
     return null;
   }
@@ -165,6 +195,7 @@ class AuthController extends ChangeNotifier {
 
   void logout() {
     _currentUser = null;
+    _sessionKey = null;
     notifyListeners();
   }
 }
