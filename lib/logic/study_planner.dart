@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../data/database.dart';
 
 // A greedy study-plan generator. It spreads each assignment's estimated time
@@ -36,6 +38,10 @@ StudyPlan generatePlan({
   int maxBlockMinutes = 60,
 }) {
   final today = DateTime(now.year, now.month, now.day);
+  // Guard against nonsense inputs so we never loop forever or place 0-minute
+  // blocks: capacity can't be negative, and a block must be at least a minute.
+  final capacity = math.max(0, dailyCapacityMinutes);
+  final blockCap = math.max(1, maxBlockMinutes);
 
   final pending = assignments
       .where((a) => !a.isCompleted && a.estimatedMinutes > 0)
@@ -50,8 +56,7 @@ StudyPlan generatePlan({
   final blocks = <PlannedBlock>[];
   final unschedulable = <Assignment, int>{};
 
-  int capacityLeft(DateTime day) =>
-      dailyCapacityMinutes - (usedPerDay[day] ?? 0);
+  int capacityLeft(DateTime day) => capacity - (usedPerDay[day] ?? 0);
 
   for (final a in pending) {
     var remaining = a.estimatedMinutes;
@@ -59,12 +64,11 @@ StudyPlan generatePlan({
     // Study up to and including the due date, but never before today.
     var day = today;
     while (remaining > 0 && !day.isAfter(due)) {
-      final free = capacityLeft(day);
-      if (free > 0) {
-        final chunk =
-            remaining < free ? remaining : (free < maxBlockMinutes ? free : maxBlockMinutes);
-        final place = chunk < free ? chunk : free;
-        final minutes = remaining < place ? remaining : place;
+      // Fill the day up to its remaining capacity, splitting into blocks no
+      // larger than [blockCap], before moving on to the next day.
+      var free = capacityLeft(day);
+      while (remaining > 0 && free > 0) {
+        final minutes = math.min(remaining, math.min(free, blockCap));
         blocks.add(PlannedBlock(
           day: day,
           assignmentId: a.id,
@@ -74,6 +78,7 @@ StudyPlan generatePlan({
         ));
         usedPerDay[day] = (usedPerDay[day] ?? 0) + minutes;
         remaining -= minutes;
+        free -= minutes;
       }
       day = day.add(const Duration(days: 1));
     }
