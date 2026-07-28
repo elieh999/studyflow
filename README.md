@@ -1,5 +1,7 @@
 # StudyFlow
 
+![CI](https://github.com/elieh999/studyflow/actions/workflows/ci.yml/badge.svg)
+
 StudyFlow is a study planner I built to keep all my coursework in one place instead of spreading it across sticky notes and a few different apps. You add your courses, drop in your assignments with due dates, run a focus timer while you study, keep track of your grades, and drill flashcards. Everything is saved on your own computer and the whole thing works offline, so no internet is needed once it is open.
 
 I wrote it in Flutter (Dart) and it stores everything in a local SQLite database through the drift package. There is a small account system so more than one person can use the same machine and keep their data separate.
@@ -45,7 +47,7 @@ If you just want to use it, double click **Open StudyFlow.exe** in the project f
 
 If you have the Flutter SDK and want to run it from source:
 
-```
+```bash
 flutter pub get
 flutter run -d chrome
 ```
