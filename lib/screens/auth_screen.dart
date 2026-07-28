@@ -215,7 +215,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Passwords are stored only as salted PBKDF2 hashes on this device.',
+                    'Passwords are stored only as salted Argon2id hashes on this device.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         color: scheme.onPrimary.withValues(alpha: 0.8),
