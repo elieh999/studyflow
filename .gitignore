@@ -37,6 +37,9 @@ migrate_working_dir/
 /Launch StudyFlow/
 /Open StudyFlow.exe
 
+# Personal review notes, kept out of the public repo
+/review_notes.md
+
 # Symbolication related
 app.*.symbols
 
