@@ -112,8 +112,12 @@ class AuthController extends ChangeNotifier {
   Future<String?> register(String username, String password) async {
     final name = username.trim();
     if (name.isEmpty) return 'Please choose a username.';
-    if (password.length < 6) {
-      return 'Password must be at least 6 characters.';
+    if (password.length < 10) {
+      return 'Password must be at least 10 characters.';
+    }
+    if (!RegExp(r'[A-Za-z]').hasMatch(password) ||
+        !RegExp(r'[0-9]').hasMatch(password)) {
+      return 'Password must include a letter and a number.';
     }
     if (_accounts.any((a) => a.username.toLowerCase() == name.toLowerCase())) {
       return 'That username is already taken.';
@@ -205,3 +209,4 @@ class _Lockout {
   final int fails;
   final int untilMillis;
 }
+
