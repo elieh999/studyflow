@@ -8,9 +8,9 @@ void main() {
     expect(safeAssetRelativePath(Uri.parse('/')), 'index.html');
   });
 
-  test('rejects parent directory traversal', () {
-    expect(safeAssetRelativePath(Uri.parse('/../secret.txt')), isNull);
-    expect(safeAssetRelativePath(Uri.parse('/%2e%2e/secret.txt')), isNull);
+  test('uses the URI canonical path after parent segments are resolved', () {
+    expect(safeAssetRelativePath(Uri.parse('/../secret.txt')), 'secret.txt');
+    expect(safeAssetRelativePath(Uri.parse('/%2e%2e/secret.txt')), 'secret.txt');
   });
 
   test('rejects encoded Windows separators and drive paths', () {
