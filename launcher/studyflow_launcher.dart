@@ -4,7 +4,7 @@
 // windows` target is unavailable (it needs the Visual Studio C++ workload and
 // Developer Mode, both of which require admin rights we don't have), so the app
 // is served locally instead. This launcher is a real compiled executable
-// (built with `dart compile exe`) — not a batch file — that:
+// (built with `dart compile exe`) â€” not a batch file â€” that:
 //   1. hides its own console window,
 //   2. serves the bundled offline app from a fixed local port, and
 //   3. opens it in an app-style browser window.
@@ -15,6 +15,8 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+
+import 'path_safety.dart';
 
 const int _port = 51789;
 const String _url = 'http://127.0.0.1:$_port/';
@@ -66,9 +68,13 @@ Future<void> _serve(HttpRequest request, Directory appDir) async {
       await _proxyAi(request);
       return;
     }
-    var path = request.uri.path;
-    if (path == '/' || path.isEmpty) path = '/index.html';
-    final file = File('${appDir.path}${path.replaceAll('/', '\\')}');
+    final relativePath = safeAssetRelativePath(request.uri);
+    if (relativePath == null) {
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+    final file = File('${appDir.path}\\$relativePath');
 
     if (!file.existsSync()) {
       // Single-page app fallback.
@@ -76,7 +82,7 @@ Future<void> _serve(HttpRequest request, Directory appDir) async {
       await _writeFile(request, index, 'text/html');
       return;
     }
-    await _writeFile(request, file, _contentType(path));
+    await _writeFile(request, file, _contentType(relativePath));
   } catch (_) {
     request.response.statusCode = HttpStatus.internalServerError;
     await request.response.close();
@@ -236,6 +242,7 @@ void _hideConsoleWindow() {
     final hwnd = getConsoleWindow();
     if (hwnd != 0) showWindow(hwnd, 0); // 0 = SW_HIDE
   } catch (_) {
-    // Not fatal — worst case a console window stays visible.
+    // Not fatal â€” worst case a console window stays visible.
   }
 }
+
