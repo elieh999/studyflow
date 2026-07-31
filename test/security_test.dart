@@ -34,13 +34,27 @@ void main() {
   });
 
   group('auth lockout', () {
+    test('rejects weak passwords for encrypted local accounts', () async {
+      SharedPreferences.setMockInitialValues({});
+      final auth = AuthController(await SharedPreferences.getInstance());
+
+      expect(
+        await auth.register('short', 'abc123'),
+        'Password must be at least 10 characters.',
+      );
+      expect(
+        await auth.register('letters', 'abcdefghij'),
+        'Password must include a letter and a number.',
+      );
+    });
+
     test('locks after repeated failures and unlocks once time passes', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       var now = DateTime(2026, 7, 28, 12);
       final auth = AuthController(prefs, clock: () => now);
 
-      expect(await auth.register('bob', 'correct1'), isNull);
+      expect(await auth.register('bob', 'correct1234'), isNull);
       auth.logout();
 
       for (var i = 0; i < 5; i++) {
@@ -49,12 +63,13 @@ void main() {
       // Sixth attempt is refused by the lockout, even with the right password.
       expect(await auth.login('bob', 'wrong'), contains('Too many attempts'));
       expect(auth.lockRemainingSeconds('bob'), greaterThan(0));
-      expect(await auth.login('bob', 'correct1'), contains('Too many attempts'));
+      expect(
+          await auth.login('bob', 'correct1234'), contains('Too many attempts'));
 
       // Move past the lockout window.
       now = now.add(const Duration(seconds: 40));
       expect(auth.lockRemainingSeconds('bob'), 0);
-      expect(await auth.login('bob', 'correct1'), isNull);
+      expect(await auth.login('bob', 'correct1234'), isNull);
       expect(auth.isLoggedIn, isTrue);
     });
   });
@@ -85,3 +100,4 @@ void main() {
     });
   });
 }
+
